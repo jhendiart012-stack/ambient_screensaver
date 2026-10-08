@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>山嵐地平線 · 沉靜待機螢幕保護程式</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b111a;
+      font-family: var(--font-sans);
+      transition: background-color 1s cubic-bezier(0.16, 1, 0.3, 1);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    .cursor-hidden {
+      cursor: none !important;
+    }
+
+    .font-sans-clock {
+      font-family: var(--font-sans);
+      font-weight: 200;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .quiet-glass {
+      background: rgba(14, 18, 26, 0.72);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+    }
+
+    .quiet-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.65);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .quiet-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    .quiet-btn.active {
+      background: rgba(255, 255, 255, 0.22);
+      border-color: rgba(255, 255, 255, 0.42);
+      color: #ffffff;
+    }
+
+    input[type=range] {
+      accent-color: #d1c7bd;
+    }
+
+    /* 隱藏原生取色器樣式，使其融合入圓圈 */
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden flex items-center justify-center select-none bg-[#0b111a]">
+
+  <!-- 主畫布 -->
+  <canvas id="stage" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+  <!-- 時鐘 HUD -->
+  <div id="clockHUD" class="absolute z-10 pointer-events-none flex flex-col items-center justify-center text-center transition-all duration-700 bottom-16 md:bottom-20 opacity-90">
+    <div id="clockDigits" class="font-sans-clock text-6xl md:text-8xl text-white/90 tracking-normal drop-shadow-sm">
+      00:00:00
+    </div>
+    <div id="clockCalendar" class="text-[12px] md:text-sm tracking-[0.24em] text-white/50 mt-3 font-light">
+      STANDBY
+    </div>
+  </div>
+
+  <!-- 左上角模式徽章 -->
+  <div id="modeBadge" class="absolute top-8 left-8 z-20 pointer-events-none flex items-center space-x-3 transition-opacity duration-500 opacity-60">
+    <span class="w-1.5 h-1.5 rounded-full bg-white/70"></span>
+    <span id="badgeTitle" class="text-[12px] tracking-[0.2em] font-light text-white/80">山嵐疊嶂</span>
+    <span id="cycleLabel" class="text-[10px] tracking-wider text-white/40 font-mono hidden">輪播中</span>
+  </div>
+
+  <!-- 右上角測候數據 -->
+  <div id="cornerTelemetry" class="absolute top-8 right-8 z-20 pointer-events-none hidden md:flex items-center space-x-4 text-[10px] tracking-[0.2em] text-white/40 font-light transition-opacity duration-500 opacity-60">
+    <span>分區 // 04</span>
+    <span>•</span>
+    <span>測候標高 // 1,420M</span>
+    <span>•</span>
+    <span id="fpsCounter">60 FPS</span>
+  </div>
+
+  <!-- 底部懸浮控制板 -->
+  <div id="controlDock" class="quiet-glass absolute bottom-7 z-30 transition-all duration-500 opacity-100 px-5 py-3.5 rounded-2xl max-w-[94vw] md:max-w-2xl flex flex-col gap-3 text-xs text-white/80">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <!-- 4 種山嵐變體切換 -->
+      <div class="flex items-center space-x-1.5 overflow-x-auto pb-0.5">
+        <button class="quiet-btn active px-3 py-1.5 rounded-lg text-[11px] tracking-wider font-light" data-mode="ridges">山嵐疊嶂</button>
+        <button class="quiet-btn px-3 py-1.5 rounded-lg text-[11px] tracking-wider font-light" data-mode="contours">等高地貌</button>
+        <button class="quiet-btn px-3 py-1.5 rounded-lg text-[11px] tracking-wider font-light" data-mode="coast">暮色水岸</button>
+        <button class="quiet-btn px-3 py-1.5 rounded-lg text-[11px] tracking-wider font-light" data-mode="weave">織網微風</button>
+      </div>
+
+      <!-- 功能操作組 -->
+      <div class="flex items-center space-x-1.5 ml-auto">
+        <button id="cycleBtn" class="quiet-btn px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 font-light" title="每 40 秒自動換場 (快速鍵 A)">
+          <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          <span class="text-[10px] tracking-wider">輪播</span>
+        </button>
+        <button id="clockToggleBtn" class="quiet-btn active px-2.5 py-1.5 rounded-lg" title="時鐘顯隱 (快速鍵 C)">
+          <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.6"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 7v5l3 2"/></svg>
+        </button>
+        <button id="fsBtn" class="quiet-btn px-2.5 py-1.5 rounded-lg" title="全螢幕 (快速鍵 F)">
+          <svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 次層工具列：速度、調色盤與自訂配色 -->
+    <div class="flex items-center justify-between border-t border-white/5 pt-2.5 gap-4 flex-wrap">
+      <div class="flex items-center space-x-2">
+        <span class="text-[10px] text-white/50 tracking-wider font-light">漂移流速</span>
+        <input id="speedControl" type="range" min="0.3" max="3.5" step="0.1" value="1.1" class="w-20 md:w-28 h-1 bg-white/10 rounded-full cursor-pointer">
+        <span id="speedValueText" class="text-[10px] font-mono text-white/40">1.1x</span>
+      </div>
+
+      <div class="flex items-center space-x-2 ml-auto">
+        <span class="text-[10px] text-white/50 tracking-wider font-light">典雅配色</span>
+        <div class="flex items-center space-x-1.5">
+          <!-- 1. 深海靛藍 -->
+          <button class="palette-swatch w-4 h-4 rounded-full ring-2 ring-white ring-offset-2 ring-offset-black transition-all" 
+                  data-theme="indigo" 
+                  title="深海靛藍與象牙白 (快速鍵 P)"
+                  style="background: linear-gradient(135deg, #0b111a 50%, #f4efe6 50%);"></button>
+          
+          <!-- 2. 紅陶灰磚 (調低飽和度) -->
+          <button class="palette-swatch w-4 h-4 rounded-full opacity-50 transition-all" 
+                  data-theme="terracotta" 
+                  title="紅陶灰磚與鵝毛白"
+                  style="background: linear-gradient(135deg, #1d1413 50%, #eee8e0 50%);"></button>
+          
+          <!-- 3. 炭岩黑砂 -->
+          <button class="palette-swatch w-4 h-4 rounded-full opacity-50 transition-all" 
+                  data-theme="slate" 
+                  title="炭岩黑與暖砂金"
+                  style="background: linear-gradient(135deg, #131518 50%, #d8be9b 50%);"></button>
+          
+          <!-- 4. 幽林苔石 (調低飽和度) -->
+          <button class="palette-swatch w-4 h-4 rounded-full opacity-50 transition-all" 
+                  data-theme="sage" 
+                  title="幽林苔石與霧瓷白"
+                  style="background: linear-gradient(135deg, #111714 50%, #e2e8e3 50%);"></button>
+          
+          <!-- 5. 自訂雙色調色盤按鈕 -->
+          <button id="customThemeBtn" class="palette-swatch w-4 h-4 rounded-full opacity-50 transition-all border border-dashed border-white/60 flex items-center justify-center" 
+                  data-theme="custom" 
+                  title="自訂雙色風格"
+                  style="background: linear-gradient(135deg, #1a1e24 50%, #cfd4dc 50%);">
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自訂取色彈出條 (點擊第 5 個按鈕展開) -->
+    <div id="customColorPickerRow" class="hidden flex items-center justify-between border-t border-white/5 pt-2 text-[10px] text-white/60">
+      <span class="font-light">自訂雙色調（背景與山脈基底）：</span>
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <span>背景</span>
+          <input type="color" id="customBgInput" value="#0c1117">
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <span>山景</span>
+          <input type="color" id="customAccentInput" value="#2a3c50">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const clockDigits = document.getElementById('clockDigits');
+    const clockCalendar = document.getElementById('clockCalendar');
+    const clockHUD = document.getElementById('clockHUD');
+    const controlDock = document.getElementById('controlDock');
+    const modeBadge = document.getElementById('modeBadge');
+    const cornerTelemetry = document.getElementById('cornerTelemetry');
+    const badgeTitle = document.getElementById('badgeTitle');
+    const cycleLabel = document.getElementById('cycleLabel');
+    const cycleBtn = document.getElementById('cycleBtn');
+    const speedControl = document.getElementById('speedControl');
+    const speedValueText = document.getElementById('speedValueText');
+    const fpsCounter = document.getElementById('fpsCounter');
+
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let activeMode = 'ridges';
+    let currentThemeKey = 'indigo';
+    
+    let pace = 1.1;
+    let autoCycling = false;
+    let cycleTimer = null;
+    let idleTimer = null;
+    let time = 0;
+    let isClockVisible = true;
+
+    const STEP = 12;
+
+    const floatingGeometrics = [
+      { xNorm: 0.18, yNorm: 0.32, speed: 0.15, size: 4, type: 'diamond' },
+      { xNorm: 0.52, yNorm: 0.22, speed: 0.22, size: 3, type: 'plus' },
+      { xNorm: 0.78, yNorm: 0.38, speed: 0.18, size: 3.5, type: 'square' },
+      { xNorm: 0.35, yNorm: 0.65, speed: 0.30, size: 3, type: 'circle' },
+      { xNorm: 0.88, yNorm: 0.72, speed: 0.25, size: 4, type: 'diamond' },
+    ];
+
+    // 色彩體系：調低紅陶與冷杉苔綠的彩度
+    const THEMES = {
+      indigo: {
+        bg: '#0b111a',
+        primary: '#f4efe6',
+        secondary: '#25354e',
+        accent: '#7f93b1',
+        subtle: 'rgba(244, 239, 230, 0.1)',
+        line: 'rgba(244, 239, 230, 0.32)',
+        geoOverlay: 'rgba(244, 239, 230, 0.16)'
+      },
+      terracotta: {
+        // 低彩度紅灰褐陶土
+        bg: '#171110',
+        primary: '#eee8e0',
+        secondary: '#422c28',
+        accent: '#82655f',
+        subtle: 'rgba(238, 232, 224, 0.08)',
+        line: 'rgba(238, 232, 224, 0.26)',
+        geoOverlay: 'rgba(238, 232, 224, 0.13)'
+      },
+      slate: {
+        bg: '#131518',
+        primary: '#eddcc9',
+        secondary: '#363a42',
+        accent: '#bfa78a',
+        subtle: 'rgba(237, 220, 201, 0.1)',
+        line: 'rgba(237, 220, 201, 0.32)',
+        geoOverlay: 'rgba(237, 220, 201, 0.16)'
+      },
+      sage: {
+        // 低彩度沉穩幽林苔石
+        bg: '#0f1412',
+        primary: '#e2e8e3',
+        secondary: '#25302a',
+        accent: '#5e6f66',
+        subtle: 'rgba(226, 232, 227, 0.08)',
+        line: 'rgba(226, 232, 227, 0.25)',
+        geoOverlay: 'rgba(226, 232, 227, 0.13)'
+      },
+      custom: {
+        bg: '#0c1117',
+        primary: '#ffffff',
+        secondary: '#2a3c50',
+        accent: '#5a7796',
+        subtle: 'rgba(255, 255, 255, 0.08)',
+        line: 'rgba(255, 255, 255, 0.28)',
+        geoOverlay: 'rgba(255, 255, 255, 0.14)'
+      }
+    };
+
+    // --- 自訂色票推算與本地儲存 ---
+    function hexToRgb(hex) {
+      const parsed = hex.replace('#', '');
+      const num = parseInt(parsed, 16);
+      return {
+        r: (num >> 16) & 255,
+        g: (num >> 8) & 255,
+        b: num & 255
+      };
+    }
+
+    function buildCustomTheme(bgHex, secHex) {
+      const bgRgb = hexToRgb(bgHex);
+      const secRgb = hexToRgb(secHex);
+
+      THEMES.custom = {
+        bg: bgHex,
+        primary: '#ffffff',
+        secondary: secHex,
+        accent: `rgba(${Math.min(255, secRgb.r + 50)}, ${Math.min(255, secRgb.g + 50)}, ${Math.min(255, secRgb.b + 50)}, 0.8)`,
+        subtle: 'rgba(255, 255, 255, 0.08)',
+        line: 'rgba(255, 255, 255, 0.3)',
+        geoOverlay: 'rgba(255, 255, 255, 0.15)'
+      };
+
+      const customBtn = document.getElementById('customThemeBtn');
+      customBtn.style.background = `linear-gradient(135deg, ${bgHex} 50%, ${secHex} 50%)`;
+
+      localStorage.setItem('ambient_custom_bg', bgHex);
+      localStorage.setItem('ambient_custom_sec', secHex);
+    }
+
+    function loadSavedCustomTheme() {
+      const savedBg = localStorage.getItem('ambient_custom_bg') || '#0c1117';
+      const savedSec = localStorage.getItem('ambient_custom_sec') || '#2a3c50';
+      document.getElementById('customBgInput').value = savedBg;
+      document.getElementById('customAccentInput').value = savedSec;
+      buildCustomTheme(savedBg, savedSec);
+    }
+
+    function resizeCanvas() {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      clockDigits.textContent = `${h}:${m}:${s}`;
+
+      const yr = now.getFullYear();
+      const mo = now.getMonth() + 1;
+      const da = now.getDate();
+      const wk = weekdays[now.getDay()];
+      clockCalendar.textContent = `${yr} 年 ${mo} 月 ${da} 日 · 星期${wk}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function wakeUI() {
+      document.body.classList.remove('cursor-hidden');
+      controlDock.style.opacity = '1';
+      controlDock.style.pointerEvents = 'auto';
+      modeBadge.style.opacity = '0.65';
+      if (cornerTelemetry) cornerTelemetry.style.opacity = '0.5';
+
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        document.body.classList.add('cursor-hidden');
+        controlDock.style.opacity = '0';
+        controlDock.style.pointerEvents = 'none';
+        modeBadge.style.opacity = '0.15';
+        if (cornerTelemetry) cornerTelemetry.style.opacity = '0.15';
+      }, 3500);
+    }
+    ['mousemove', 'mousedown', 'keydown', 'touchstart'].forEach(evt => {
+      window.addEventListener(evt, wakeUI, { passive: true });
+    });
+    wakeUI();
+
+    function renderArchitecturalAccents(theme) {
+      ctx.save();
+      ctx.fillStyle = theme.geoOverlay;
+      ctx.strokeStyle = theme.geoOverlay;
+      ctx.lineWidth = 1;
+
+      const crossPoints = [
+        { x: width * 0.15, y: height * 0.28 },
+        { x: width * 0.85, y: height * 0.24 },
+        { x: width * 0.32, y: height * 0.78 },
+        { x: width * 0.72, y: height * 0.82 }
+      ];
+
+      for (let i = 0; i < crossPoints.length; i++) {
+        const pt = crossPoints[i];
+        const s = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(pt.x - s, pt.y);
+        ctx.lineTo(pt.x + s, pt.y);
+        ctx.moveTo(pt.x, pt.y - s);
+        ctx.lineTo(pt.x, pt.y + s);
+        ctx.stroke();
+      }
+
+      const tickStartX = width - 24;
+      ctx.beginPath();
+      for (let y = height * 0.3; y <= height * 0.7; y += 28) {
+        ctx.moveTo(tickStartX, y);
+        ctx.lineTo(tickStartX + 6, y);
+      }
+      ctx.stroke();
+
+      ctx.font = '9px var(--font-sans)';
+      ctx.fillText('基準線 // 0.84', tickStartX - 68, height * 0.3 + 3);
+
+      const driftOffset = time * pace * 28;
+      for (let g = 0; g < floatingGeometrics.length; g++) {
+        const item = floatingGeometrics[g];
+        const currentX = ((item.xNorm * width + driftOffset * item.speed) % (width + 60)) - 30;
+        const currentY = item.yNorm * height;
+
+        if (item.type === 'diamond') {
+          ctx.beginPath();
+          ctx.moveTo(currentX, currentY - item.size);
+          ctx.lineTo(currentX + item.size, currentY);
+          ctx.lineTo(currentX, currentY + item.size);
+          ctx.lineTo(currentX - item.size, currentY);
+          ctx.closePath();
+          ctx.stroke();
+        } else if (item.type === 'square') {
+          ctx.strokeRect(currentX - item.size / 2, currentY - item.size / 2, item.size, item.size);
+        } else if (item.type === 'plus') {
+          ctx.beginPath();
+          ctx.moveTo(currentX - item.size, currentY);
+          ctx.lineTo(currentX + item.size, currentY);
+          ctx.moveTo(currentX, currentY - item.size);
+          ctx.lineTo(currentX, currentY + item.size);
+          ctx.stroke();
+        } else if (item.type === 'circle') {
+          ctx.beginPath();
+          ctx.arc(currentX, currentY, item.size * 0.6, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    const ridgesScene = {
+      layers: 5,
+      render() {
+        const theme = THEMES[currentThemeKey];
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        const baseH = height * 0.44;
+        const drift = time * 0.5 * pace;
+
+        for (let l = 0; l < this.layers; l++) {
+          const yOffset = baseH + (l * (height * 0.11));
+          const freq1 = 0.002 + l * 0.0004;
+          const shift1 = drift * (0.6 + l * 0.35);
+          const amp1 = 38 - l * 3;
+
+          ctx.beginPath();
+          ctx.moveTo(0, height);
+          ctx.lineTo(0, yOffset);
+
+          for (let x = 0; x <= width + STEP; x += STEP) {
+            const y = yOffset + Math.sin(x * freq1 + shift1) * amp1 + Math.cos(x * 0.001 - shift1 * 0.5) * 16;
+            ctx.lineTo(x, y);
+          }
+
+          ctx.lineTo(width, height);
+          ctx.closePath();
+
+          ctx.fillStyle = l === 0 ? theme.secondary + '40' : (l === this.layers - 1 ? theme.secondary + '78' : theme.secondary + '58');
+          ctx.fill();
+
+          ctx.strokeStyle = l === 0 ? theme.line : theme.subtle;
+          ctx.lineWidth = l === 0 ? 1.4 : 0.9;
+          ctx.stroke();
+        }
+
+        renderArchitecturalAccents(theme);
+      }
+    };
+
+    const contoursScene = {
+      linesCount: 16,
+      render() {
+        const theme = THEMES[currentThemeKey];
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        const drift = time * 0.55 * pace;
+        const spacing = height / (this.linesCount + 2);
+
+        for (let i = 0; i < this.linesCount; i++) {
+          const baseY = (i + 1.5) * spacing;
+          const speedFactor = 0.5 + (i / this.linesCount) * 0.8;
+
+          ctx.beginPath();
+          for (let x = 0; x <= width + STEP; x += STEP) {
+            const wave = Math.sin(x * 0.003 + drift * speedFactor + i * 0.4) * 20
+                       + Math.cos(x * 0.0015 - drift * 0.3) * 14;
+            const y = baseY + wave;
+
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+
+          if (i % 4 === 0) {
+            ctx.strokeStyle = theme.line;
+            ctx.lineWidth = 1.3;
+          } else {
+            ctx.strokeStyle = theme.subtle;
+            ctx.lineWidth = 0.8;
+          }
+          ctx.stroke();
+        }
+
+        renderArchitecturalAccents(theme);
+      }
+    };
+
+    const coastScene = {
+      ripplesCount: 10,
+      render() {
+        const theme = THEMES[currentThemeKey];
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        const horizonY = height * 0.46;
+        const drift = time * 0.52 * pace;
+
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        for (let x = 0; x <= width + STEP; x += STEP) {
+          const mountain = Math.sin(x * 0.0028 + drift * 0.25) * 32 
+                         + Math.sin(x * 0.006 - drift * 0.15) * 12;
+          ctx.lineTo(x, horizonY - Math.abs(mountain));
+        }
+        ctx.lineTo(width, horizonY);
+        ctx.closePath();
+        ctx.fillStyle = theme.secondary + '4a';
+        ctx.fill();
+        ctx.strokeStyle = theme.line;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        ctx.lineTo(width, horizonY);
+        ctx.strokeStyle = theme.line;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        for (let r = 0; r < this.ripplesCount; r++) {
+          const depth = (r + 1) / this.ripplesCount;
+          const yPos = horizonY + depth * (height - horizonY);
+          const rippleSpeed = (0.6 + depth * 0.9) * drift;
+
+          ctx.beginPath();
+          for (let x = 0; x <= width + STEP; x += STEP) {
+            const wave = Math.sin(x * 0.006 + rippleSpeed) * (2.5 + depth * 9);
+            if (x === 0) ctx.moveTo(x, yPos + wave);
+            else ctx.lineTo(x, yPos + wave);
+          }
+
+          ctx.strokeStyle = (r % 3 === 0) ? theme.line : theme.subtle;
+          ctx.lineWidth = (r % 3 === 0) ? 1.0 : 0.75;
+          ctx.stroke();
+        }
+
+        renderArchitecturalAccents(theme);
+      }
+    };
+
+    const weaveScene = {
+      bandsCount: 7,
+      render() {
+        const theme = THEMES[currentThemeKey];
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, width, height);
+
+        const drift = time * 0.58 * pace;
+        const centerY = height * 0.5;
+
+        for (let b = 0; b < this.bandsCount; b++) {
+          const yAnchor = centerY + (b - (this.bandsCount - 1) / 2) * (height * 0.08);
+          const phase = b * 0.55;
+          const freq = 0.0025 + (b % 3) * 0.0008;
+
+          ctx.beginPath();
+          for (let x = 0; x <= width + STEP; x += STEP) {
+            const y = yAnchor + Math.sin(x * freq + drift * (1 + b * 0.15) + phase) * 36;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+
+          ctx.strokeStyle = (b % 2 === 0) ? theme.line : theme.accent;
+          ctx.lineWidth = (b % 2 === 0) ? 1.2 : 0.85;
+          ctx.stroke();
+        }
+
+        renderArchitecturalAccents(theme);
+      }
+    };
+
+    const MODES = {
+      ridges: ridgesScene,
+      contours: contoursScene,
+      coast: coastScene,
+      weave: weaveScene
+    };
+
+    const MODE_TITLES = {
+      ridges: '山嵐疊嶂',
+      contours: '等高地貌',
+      coast: '暮色水岸',
+      weave: '織網微風'
+    };
+
+    function setVisualMode(modeKey) {
+      if (!MODES[modeKey]) return;
+      activeMode = modeKey;
+      badgeTitle.textContent = MODE_TITLES[modeKey];
+
+      document.querySelectorAll('[data-mode]').forEach(btn => {
+        if (btn.getAttribute('data-mode') === modeKey) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    function rotateNextMode() {
+      const keys = Object.keys(MODES);
+      const nextIdx = (keys.indexOf(activeMode) + 1) % keys.length;
+      setVisualMode(keys[nextIdx]);
+    }
+
+    function setTheme(themeKey) {
+      if (!THEMES[themeKey]) return;
+      currentThemeKey = themeKey;
+      document.body.style.backgroundColor = THEMES[themeKey].bg;
+
+      const pickerRow = document.getElementById('customColorPickerRow');
+      if (themeKey === 'custom') {
+        pickerRow.classList.remove('hidden');
+      } else {
+        pickerRow.classList.add('hidden');
+      }
+
+      document.querySelectorAll('.palette-swatch').forEach(swatch => {
+        if (swatch.getAttribute('data-theme') === themeKey) {
+          swatch.classList.remove('opacity-50');
+          swatch.classList.add('ring-2', 'ring-white', 'ring-offset-2', 'ring-offset-black');
+        } else {
+          swatch.classList.add('opacity-50');
+          swatch.classList.remove('ring-2', 'ring-white', 'ring-offset-2', 'ring-offset-black');
+        }
+      });
+    }
+
+    function rotateNextTheme() {
+      const keys = Object.keys(THEMES);
+      const nextIdx = (keys.indexOf(currentThemeKey) + 1) % keys.length;
+      setTheme(keys[nextIdx]);
+    }
+
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+    let fps = 60;
+
+    function renderLoop(now) {
+      time += 0.016;
+
+      frameCount++;
+      if (now - lastFrameTime >= 1000) {
+        fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+        fpsCounter.textContent = `${fps} FPS`;
+        frameCount = 0;
+        lastFrameTime = now;
+      }
+
+      if (MODES[activeMode]) {
+        MODES[activeMode].render();
+      }
+      requestAnimationFrame(renderLoop);
+    }
+
+    // 事件監聽
+    document.querySelectorAll('[data-mode]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        setVisualMode(e.currentTarget.getAttribute('data-mode'));
+      });
+    });
+
+    document.querySelectorAll('.palette-swatch').forEach(swatch => {
+      swatch.addEventListener('click', (e) => {
+        setTheme(e.currentTarget.getAttribute('data-theme'));
+      });
+    });
+
+    // 自訂顏色監聽
+    const customBgInput = document.getElementById('customBgInput');
+    const customAccentInput = document.getElementById('customAccentInput');
+
+    function handleColorChange() {
+      buildCustomTheme(customBgInput.value, customAccentInput.value);
+      if (currentThemeKey === 'custom') {
+        setTheme('custom');
+      }
+    }
+    customBgInput.addEventListener('input', handleColorChange);
+    customAccentInput.addEventListener('input', handleColorChange);
+
+    speedControl.addEventListener('input', (e) => {
+      pace = parseFloat(e.target.value);
+      speedValueText.textContent = `${pace.toFixed(1)}x`;
+    });
+
+    function toggleCycle() {
+      autoCycling = !autoCycling;
+      if (autoCycling) {
+        cycleBtn.classList.add('active');
+        cycleLabel.classList.remove('hidden');
+        cycleTimer = setInterval(rotateNextMode, 40000);
+      } else {
+        cycleBtn.classList.remove('active');
+        cycleLabel.classList.add('hidden');
+        clearInterval(cycleTimer);
+      }
+    }
+    cycleBtn.addEventListener('click', toggleCycle);
+
+    const clockToggleBtn = document.getElementById('clockToggleBtn');
+    function toggleClockDisplay() {
+      isClockVisible = !isClockVisible;
+      clockHUD.style.opacity = isClockVisible ? '0.9' : '0';
+      if (isClockVisible) clockToggleBtn.classList.add('active');
+      else clockToggleBtn.classList.remove('active');
+    }
+    clockToggleBtn.addEventListener('click', toggleClockDisplay);
+
+    const fsBtn = document.getElementById('fsBtn');
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+    fsBtn.addEventListener('click', toggleFullscreen);
+
+    // 快速鍵
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        rotateNextMode();
+      } else if (e.key === 'p' || e.key === 'P') {
+        rotateNextTheme();
+      } else if (e.key === 'c' || e.key === 'C') {
+        toggleClockDisplay();
+      } else if (e.key === 'a' || e.key === 'A') {
+        toggleCycle();
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      }
+    });
+
+    window.onload = function() {
+      loadSavedCustomTheme();
+      resizeCanvas();
+      setTheme('indigo');
+      setVisualMode('ridges');
+      requestAnimationFrame(renderLoop);
+    };
+  </script>
+</body>
+</html>
